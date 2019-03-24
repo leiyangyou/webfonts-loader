@@ -1,17 +1,8 @@
 var loaderUtils = require('loader-utils');
 var webfontsGenerator = require('webfonts-generator');
+var VirtualModuleWebpackPlugin = require('virtual-module-webpack-plugin');
 var path = require('path');
 var glob = require('glob');
-var url = require('url');
-var hashFiles = require('./utils').hashFiles;
-
-var mimeTypes = {
-  'eot': 'application/vnd.ms-fontobject',
-  'svg': 'image/svg+xml',
-  'ttf': 'application/x-font-ttf',
-  'woff': 'application/font-woff',
-  'woff2': 'font/woff2'
-};
 
 function getFilesAndDeps (patterns, context) {
   var files = [];
@@ -66,7 +57,8 @@ function wpGetOptions (context) {
 module.exports = function (content) {
   this.cacheable();
 
-  var webpackOptions = this.options || {}; // only makes sense in Webpack 1.x, or when LoaderOptionsPlugin is used
+  const { atime, ctime, mtime } = this.fs.statSync(this.resourcePath);
+
   var options = wpGetOptions(this) || {};
   var rawFontConfig;
   try {
@@ -80,6 +72,7 @@ module.exports = function (content) {
   filesAndDeps.dependencies.files.forEach(this.addDependency.bind(this));
   filesAndDeps.dependencies.directories.forEach(this.addContextDependency.bind(this));
   fontConfig.files = filesAndDeps.files;
+  fontConfig.cssFontsPath = fontConfig.cssFontsPath || './';
 
   // With everything set up, let's make an ACTUAL config.
   var formats = fontConfig.types || ['eot', 'woff', 'woff2', 'ttf', 'svg'];
@@ -103,8 +96,7 @@ module.exports = function (content) {
     html: fontConfig.html || false,
     htmlDest: fontConfig.htmlDest || undefined,
     writeFiles: fontConfig.writeFiles || false,
-    cssFontsUrl: fontConfig.cssFontsUrl || '',
-    embed: fontConfig.embed || false,
+    cssFontsUrl: fontConfig.cssFontsPath || './',
     formatOptions: fontConfig.formatOptions || {}
   };
 
@@ -126,10 +118,6 @@ module.exports = function (content) {
 
   if (fontConfig.cssTemplate) {
     generatorOptions.cssTemplate = path.resolve(this.context, fontConfig.cssTemplate);
-  }
-
-  if (fontConfig.cssFontsPath) {
-    generatorOptions.cssFontsPath = path.resolve(this.context, fontConfig.cssFontsPath);
   }
 
   if (fontConfig.htmlTemplate) {
@@ -166,15 +154,8 @@ module.exports = function (content) {
 
   var cb = this.async();
 
-  var publicPath = options.publicPath || (webpackOptions.output && webpackOptions.output.publicPath) || '/';
-  var embed = !!generatorOptions.embed;
-
   if (generatorOptions.cssTemplate) {
     this.addDependency(generatorOptions.cssTemplate);
-  }
-
-  if (generatorOptions.cssFontsPath) {
-    this.addDependency(generatorOptions.cssFontsPath);
   }
 
   webfontsGenerator(generatorOptions, (err, res) => {
@@ -184,32 +165,19 @@ module.exports = function (content) {
     var urls = {};
     for (var i in formats) {
       var format = formats[i];
-      var filename = fontConfig.fileName || options.fileName || '[chunkhash]-[fontname].[ext]';
-      var chunkHash = filename.indexOf('[chunkhash]') !== -1
-        ? hashFiles(generatorOptions.files, options.hashLength) : '';
+      var filename = fontConfig.fileName || options.fileName || '[fontname].[ext]';
 
       filename = filename
-        .replace('[chunkhash]', chunkHash)
         .replace('[fontname]', generatorOptions.fontName)
         .replace('[ext]', format);
 
-      if (!embed) {
-        var formatFilename = loaderUtils.interpolateName(this,
-          filename,
-          {
-            context: this.rootContext || this.options.context || this.context,
-            content: res[format]
-          }
-        );
-        urls[format] = url.resolve(publicPath, formatFilename.replace(/\\/g, '/'));
-        this.emitFile(formatFilename, res[format]);
-      } else {
-        urls[format] = 'data:' +
-        mimeTypes[format] +
-        ';charset=utf-8;base64,' +
-        (Buffer.from(res[format]).toString('base64'));
-      }
+      const modulePath = path.resolve(this.context, fontConfig.cssFontsPath, filename);
+
+      urls[format] = filename;
+
+      VirtualModuleWebpackPlugin.populateFilesystem({ fs: this.fs, modulePath, contents: res[format], ctime, mtime, atime });
     }
+
     var emitCodepointsOptions = fontConfig.emitCodepoints || options.emitCodepoints || null;
     if (emitCodepointsOptions) {
       const emitCodepoints = require('./emit-codepoints');

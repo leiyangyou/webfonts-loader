@@ -19,6 +19,10 @@ module.exports = {
           'css-loader',
           require.resolve('../') // Replace this line with require('webfonts-loader')
         ]
+      },
+      {
+        test: /\.(svg|woff|woff2|ttf|eot)$/,
+        use: 'file-loader'
       }
     ]
   },
