@@ -3,6 +3,7 @@ var webfontsGenerator = require('webfonts-generator');
 var VirtualModuleWebpackPlugin = require('virtual-module-webpack-plugin');
 var path = require('path');
 var glob = require('glob');
+var hashFiles = require('./utils').hashFiles;
 
 function getFilesAndDeps (patterns, context) {
   var files = [];
@@ -165,9 +166,10 @@ module.exports = function (content) {
     var urls = {};
     for (var i in formats) {
       var format = formats[i];
-      var filename = fontConfig.fileName || options.fileName || '[fontname].[ext]';
+      var filename = '[fontname][hash].[ext]';
 
       filename = filename
+        .replace('[hash]', hashFiles(generatorOptions.files, 32))
         .replace('[fontname]', generatorOptions.fontName)
         .replace('[ext]', format);
 
