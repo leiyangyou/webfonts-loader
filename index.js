@@ -3,7 +3,6 @@ var webfontsGenerator = require('webfonts-generator');
 var VirtualModuleWebpackPlugin = require('virtual-module-webpack-plugin');
 var path = require('path');
 var glob = require('glob');
-var hashFiles = require('./utils').hashFiles;
 
 function getFilesAndDeps (patterns, context) {
   var files = [];
@@ -166,16 +165,24 @@ module.exports = function (content) {
     var urls = {};
     for (var i in formats) {
       var format = formats[i];
-      var filename = '[fontname][hash].[ext]';
+      var filename = '[fontname].[ext]';
 
       filename = filename
-        .replace('[hash]', hashFiles(generatorOptions.files, 32))
         .replace('[fontname]', generatorOptions.fontName)
         .replace('[ext]', format);
 
       const modulePath = path.resolve(this.context, fontConfig.cssFontsPath, filename);
 
       urls[format] = filename;
+
+      const mapIsAvailable = typeof Map !== 'undefined';
+      const readFileStorageIsMap = mapIsAvailable && this.fs._readFileStorage.data instanceof Map;
+
+      if (readFileStorageIsMap) { // enhanced-resolve@3.4.0 or greater
+        this.fs._readFileStorage.data.delete(modulePath);
+      } else if (this.fs._readFileStorage.data[modulePath]) { // enhanced-resolve@3.3.0 or lower
+        delete this.fs._readFileStorage.data[modulePath];
+      }
 
       VirtualModuleWebpackPlugin.populateFilesystem({ fs: this.fs, modulePath, contents: res[format], ctime, mtime, atime });
     }
